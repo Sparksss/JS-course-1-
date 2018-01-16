@@ -1,0 +1,138 @@
+class ComponentsInit {
+    /**
+     * @param elm {HTMLCollection} - элемент
+     */
+    init(elm) {
+        const initTarget = elm || document;
+        const components = initTarget.querySelectorAll('.js-component');
+        const namespace = window._kpsdp;
+        const optionsStorage = namespace.options;
+
+
+        // Идем по всем компонентам в доме
+        for (const el of components) {
+            const componentNames = el.getAttribute('data-component');
+
+            if (!componentNames) {
+                console.error('Не хватает аттрибута data-component у элемента: ', el);
+                return;
+            }
+
+            const componentsArr = componentNames.split(',');
+
+            // Идем по компонентам в рамках одной дом ноды
+            for (const name of componentsArr) {
+                this.initOne(el, name, optionsStorage[name]);
+            }
+        }
+    }
+
+    /**
+     * Инициализация одного компонента
+     * @param el {HTMLCollection} - элемент
+     * @param name {string} - имя компонента (пример: Form.IncomDocList)
+     * @param opt {Object} - опции
+     */
+    initOne(el, name, opt) {
+        const namespace = window._kpsdp;
+        const storage = namespace.components;
+        //const optionsStorage = namespace.options;
+
+        if (!storage[name] && !opt) { //optionsStorage[name]
+            console.error(`Компонент ${name} не найден.`);
+            return;
+        }
+
+        // Получаем инстанс компонента и его опции
+        let instance = new storage[name.split('.')[0]];
+        let options = deepMerge(instance.options, opt); //optionsStorage[name]
+        let handlers = options.handlers || {};
+        let domHandlers = handlers.dom || {};
+
+        // Добавляем элементы компонента в инстанс
+        instance._elems = {};
+        Object.keys(options.sels).forEach(name => {
+            instance._elems[name] = el.querySelectorAll(options.sels[name]);
+        });
+
+        // Добавляем родительскую ноду в компонент
+        instance._elems['parent'] = el;
+
+        // Добавляем обработчики дом событий
+        Object.keys(domHandlers).forEach(key => {
+            let handlerData = key.split(':');
+            let handlerEvent = handlerData[0];
+            let handlerSel = options.global && options.global[handlerData[1]] || options.sels && options.sels[handlerData[1]];
+
+            if (handlerSel === 'window' || handlerSel === 'document') {
+                this.domEventGlobal(handlerSel, handlerEvent, domHandlers, key, instance);
+            } else {
+                this.domEvent(el, handlerEvent, handlerSel, domHandlers, key, instance);
+            }
+        });
+
+        // Инициализируем компоненты
+        if (instance && instance.init) {
+            instance.init.call(instance);
+            return instance;
+        }
+    }
+
+    /**
+     *
+     * @param el
+     * @param handlerEvent
+     * @param handlerSel
+     * @param domHandlers
+     * @param key
+     * @param instance
+     */
+    domEvent(el, handlerEvent, handlerSel, domHandlers, key, instance) {
+        el.addEventListener(handlerEvent, (e) => {
+            let targetEl = e.target;
+            while (targetEl !== el) {
+                if (targetEl.matches(handlerSel)) {
+                    domHandlers[key].call(instance, e);
+                    return;
+                } else {
+                    targetEl = targetEl.parentElement;
+                }
+            }
+        });
+    }
+
+    /**
+     *
+     * @param el
+     * @param handlerEvent
+     * @param domHandlers
+     * @param key
+     * @param instance
+     */
+    domEventGlobal(el, handlerEvent, domHandlers, key, instance) {
+        (el=== 'window'? window: document).addEventListener(handlerEvent, (e) => {
+            domHandlers[key].call(instance, e);
+        });
+    }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const component = new ComponentsInit();
+    component.init();
+});
+
+export default ComponentsInit;
+
+
+
+/*el.addEventListener(handlerEvent, (e) => {
+    let targetEl = e.target;
+    while (targetEl !== el) {
+        if (targetEl.matches(handlerSel)) {
+            domHandlers[key].call(instance, e);
+            return;
+        } else {
+            targetEl = targetEl.parentElement;
+        }
+    }
+});*/
